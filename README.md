@@ -27,6 +27,9 @@ This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup 
  * Developer needs to write only a single trigger for multiple rollup fields.
  * Allows developer to filter the child records getting rolled up, just like standard rollup summary fields
 
+### Using LREngine in Triggers
+Using LREngine in trigger is fairly simple as indicated in the code snippet, developer just needs to take care of checks related to business requirements and call the LREngine. 
+
 ```java
 trigger OppRollup on Opportunity (after insert, after update, 
                                         after delete, after undelete) {
@@ -82,8 +85,15 @@ trigger OppRollup on Opportunity (after insert, after update,
      // Persiste the changes in master
      update masters;
 }
+```
 
+### Using LREngine in Batch/Scheduled/etc Apex 
+If we are not using triggers for some reason to aggregate the detail records. In that case Batch or Scheduled Apex is used on some occasions. Calling LREngine is fairly easy, once you have master record ids in hand just call the API as indicated in the code snippet below:
 
+```java
+LREngine.Context ctx = // create context with required roll up summary fields as shown in above code snippet
+Set<Id> masterRecordIds = // master record ids as per the business logic
+Sobject[] masters = LREngine.rollUp(ctx, masterRecordIds);   
 ```
 
 ## Adding some conditional filtering to the rollup operation
