@@ -32,26 +32,25 @@ trigger OppRollup on Opportunity (after insert, after update,
                                         after delete, after undelete) {
       // modified objects whose parent records should be updated
      Opportunity[] objects = null;   
-     
+
      if (Trigger.isDelete) {
          objects = Trigger.old;
      } else {
-     	/*
-     		Handle any filtering required, specially on Trigger.isUpdate event. If the rolled up fields
-     		are not changed, then please make sure you skip the rollup operation.
-     		We are not adding that for sake of similicity of this illustration.
-      	*/ 
+        /*
+            Handle any filtering required, specially on Trigger.isUpdate event. If the rolled up fields
+            are not changed, then please make sure you skip the rollup operation.
+            We are not adding that for sake of similicity of this illustration.
+        */ 
         objects = Trigger.new;
      }
-     
+
      /*
       First step is to create a context for LREngine, by specifying parent and child objects and
       lookup relationship field name
      */
      LREngine.Context ctx = new LREngine.Context(Account.SobjectType, // parent object
                                             Opportunity.SobjectType,  // child object
-                                            Schema.SObjectType.Opportunity.fields.AccountId, // relationship field name
-                                            objects // modified objects
+                                            Schema.SObjectType.Opportunity.fields.AccountId // relationship field name
                                             );     
      /*
       Next, one can add multiple rollup fields on the above relationship. 
@@ -67,22 +66,24 @@ trigger OppRollup on Opportunity (after insert, after update,
                                             LREngine.RollupOperation.Sum 
                                          )); 
      ctx.add(
-          	new LREngine.RollupSummaryField(
+            new LREngine.RollupSummaryField(
                                             Schema.SObjectType.Account.fields.SLAExpirationDate__c,
-	                                           Schema.SObjectType.Opportunity.fields.CloseDate,
-	                                           LREngine.RollupOperation.Max
+                                               Schema.SObjectType.Opportunity.fields.CloseDate,
+                                               LREngine.RollupOperation.Max
                                          ));                                       
-     
+	 
      /* 
       Calling rollup method returns in memory master objects with aggregated values in them. 
       Please note these master records are not persisted back, so that client gets a chance 
       to post process them after rollup
       */ 
-     Sobject[] masters = LREngine.rollUp(ctx);    
-     
+     Sobject[] masters = LREngine.rollUp(ctx, objects);    
+
      // Persiste the changes in master
      update masters;
 }
+
+
 ```
 
 ## Adding some conditional filtering to the rollup operation
