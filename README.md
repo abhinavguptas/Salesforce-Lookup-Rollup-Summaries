@@ -36,9 +36,12 @@ trigger OppRollup on Opportunity (after insert, after update,
      if (Trigger.isDelete) {
          objects = Trigger.old;
      } else {
-     	// handle any filtering required on Trigger.isUpdate or Trigger.isUndelete events
-      // we are not adding that for sake of similicity
-         objects = Trigger.new;
+     	/*
+     		Handle any filtering required, specially on Trigger.isUpdate event. If the rolled up fields
+     		are not changed, then please make sure you skip the rollup operation.
+     		We are not adding that for sake of similicity of this illustration.
+      	*/ 
+        objects = Trigger.new;
      }
      
      /*
