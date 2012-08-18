@@ -107,4 +107,5 @@ LREngine.Context ctx = new LREngine.Context(Account.SobjectType,
 
 ```
 # Important points
- 
+ * Using LREngine is not recommended when number of child records associated with master records are too much. Because salesforce limit on "Total number of records retrieved by SOQL queries" is 50,000 as of now. 
+ * LREngine doesn't persists changes back to master records after rollup. This gives client code to perform any further calculations, but please make sure you call UPDATE on master records to persist the changes.
