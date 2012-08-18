@@ -30,6 +30,8 @@ This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup 
 ### Using LREngine in Triggers
 Using LREngine in trigger is fairly simple as indicated in the code snippet, developer just needs to take care of checks related to business requirements and call the LREngine. 
 
+Please note : Make sure you have trapped all create/delete/undelete/update events on child object to make sure all calculations are correct.
+
 ```java
 trigger OppRollup on Opportunity (after insert, after update, 
                                         after delete, after undelete) {
