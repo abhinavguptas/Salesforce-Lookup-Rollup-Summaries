@@ -26,93 +26,108 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 /**
-    LREngine("L"ookup "R"ollup Engine) : This class simplifies rolling up on the child records in lookup relationship.
+	LREngine("L"ookup "R"ollup Engine) : This class simplifies rolling up on the child records in lookup relationship.
 */
 public class LREngine {
-    
-    /*
-        Tempalte tokens
-            0 : Fields to project
-            1 : Object to query
-            2 : Optional WHERE clause filter to add
-            3 : Group By field name
-    */
-    static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} {2} GROUP BY {3}';
-    
-    
-    /**
-        Key driver method that rolls up lookup fields based on the context.
-        
-        @param Context the complete context required to rollup
-        
-        @returns Array of in memory master objects. These objects are not updated back to the database
-                because we want client or calling code to have this freedom to do some post processing and update when required.
-    */
-    public static Sobject[] rollUp(Context ctx ) {
-        
-        // API name of the lookup field on detail sobject
+	
+	/*
+		Tempalte tokens
+			0 : Fields to project
+			1 : Object to query
+			2 : Optional WHERE clause filter to add
+			3 : Group By field name
+	*/
+	static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} {2} GROUP BY {3}';
+	
+	/**
+		Key driver method that rolls up lookup fields based on the context. This is specially useful in Trigger context.
+		
+		@param ctx Context the complete context required to rollup
+		@param detailRecordsFromTrigger child/detail records which are modified/created/deleted during the Trigger 
+		@returns Array of in memory master objects. These objects are not updated back to the database
+				because we want client or calling code to have this freedom to do some post processing and update when required.
+	*/
+	public static Sobject[] rollUp(Context ctx, Sobject[] detailRecordsFromTrigger) {
+		
+		// API name of the lookup field on detail sobject
         String lookUpFieldName = ctx.lookupField.getName();
-                
+		        
+        Set<Id> masterRecordIds = new Set<Id>(); 
+        for (Sobject kid : detailRecordsFromTrigger) {
+            masterRecordIds.add((Id)kid.get(lookUpFieldName));
+        }
+        return rollUp(ctx, masterRecordIds);
+	}
+	
+	/**
+		Key driver method that rolls up lookup fields based on the context. This is meant to be called from non trigger contexts like
+		scheduled/batch apex, where we want to rollup on some master record ids.
+		
+		@param Context the complete context required to rollup
+		@param masterIds Master record IDs whose child records should be rolled up. 
+		@returns Array of in memory master objects. These objects are not updated back to the database
+				because we want client or calling code to have this freedom to do some post processing and update when required.
+	*/
+	public static Sobject[] rollUp(Context ctx,  Set<Id> masterIds) {
         // K: Id of master record
         // V: Empty sobject with ID field, this will be used for updating the masters
         Map<Id, Sobject> masterRecordsMap = new Map<Id, Sobject>(); 
-        for (Sobject kid : ctx.detailRecordsFromTrigger) {
-            Id mId = (Id)kid.get(lookUpFieldName);
+        for (Id mId : masterIds) {
             masterRecordsMap.put(mId, ctx.master.newSobject(mId));
         }
-        
-        // #0 token : SOQL projection
-        String soqlProjection = ctx.lookupField.getName();
-        // k: detail field name, v: master field name
-        Map<String, String> detail2MasterFldMap = new Map<String, String>();
-        for (RollupSummaryField rsf : ctx.fieldsToRoll) {
-            // create aggreate projection with alias for easy fetching via AggregateResult class
-            // i.e. SUM(Amount) Amount
-            soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + rsf.detail.getName();
-            detail2MasterFldMap.put(rsf.detail.getName(), rsf.master.getName());
-        }
-        
-        // #1 token for SOQL_TEMPLATE
-        String detailTblName = ctx.detail.getDescribe().getName();
-        
-        // #2 Where clause
-        String whereClause = '';
-        if (ctx.detailWhereClause != null && ctx.detailWhereClause.trim().length() > 0) {
-            whereClause = 'WHERE ' + ctx.detailWhereClause ;
-        }
-        
-        // #3 Group by field
-        String grpByFld = ctx.lookupField.getName();
-        
-        String soql = String.format(SOQL_TEMPLATE, new String[]{soqlProjection, detailTblName, whereClause, grpByFld});
-        // aggregated results 
-        List<AggregateResult> results = Database.query(soql);
-        
-        for (AggregateResult res : results){
-            Id masterRecId = (Id)res.get(grpByFld);
-            Sobject masterObj = masterRecordsMap.get(masterRecId);
-            if (masterObj == null) {
-                System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
-                continue;
-            }
-            
-            for (String detailFld : detail2MasterFldMap.keySet()) {
-                Object aggregatedDetailVal = res.get(detailFld);
-                masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
-            }           
-        }
-        
-        return masterRecordsMap.values();   
+		
+    	// #0 token : SOQL projection
+    	String soqlProjection = ctx.lookupField.getName();
+    	// k: detail field name, v: master field name
+    	Map<String, String> detail2MasterFldMap = new Map<String, String>();
+    	for (RollupSummaryField rsf : ctx.fieldsToRoll) {
+    		// create aggreate projection with alias for easy fetching via AggregateResult class
+    		// i.e. SUM(Amount) Amount
+    		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + rsf.detail.getName();
+    		detail2MasterFldMap.put(rsf.detail.getName(), rsf.master.getName());
+    	}
+		
+    	// #1 token for SOQL_TEMPLATE
+    	String detailTblName = ctx.detail.getDescribe().getName();
+    	
+    	// #2 Where clause
+    	String whereClause = '';
+    	if (ctx.detailWhereClause != null && ctx.detailWhereClause.trim().length() > 0) {
+    		whereClause = 'WHERE ' + ctx.detailWhereClause ;
+    	}
+    	
+    	// #3 Group by field
+    	String grpByFld = ctx.lookupField.getName();
+    	
+    	String soql = String.format(SOQL_TEMPLATE, new String[]{soqlProjection, detailTblName, whereClause, grpByFld});
+    	// aggregated results 
+    	List<AggregateResult> results = Database.query(soql);
+    	
+    	for (AggregateResult res : results){
+			Id masterRecId = (Id)res.get(grpByFld);
+			Sobject masterObj = masterRecordsMap.get(masterRecId);
+			if (masterObj == null) {
+				System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
+				continue;
+			}
+			
+			for (String detailFld : detail2MasterFldMap.keySet()) {
+				Object aggregatedDetailVal = res.get(detailFld);
+				masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
+			}    		
+    	}
+    	
+    	return masterRecordsMap.values();	
     }
-    
-    
-    
-    
+	
+	
+	
+	
     /**
         Exception throwed if Rollup Summary field is in bad state
     */
     public class BadRollUpSummaryStateException extends Exception {}
-    
+	
    /**
        Which rollup operation you want to perform 
     */ 
@@ -121,11 +136,11 @@ public class LREngine {
     }
     
     /**
-        Represents a "Single" roll up field, it contains
-        - Master field where the rolled up info will be saved
-        - Detail field that will be rolled up via any operation i.e. sum, avg etc 
-        - Operation to perform i.e. sum, avg, count etc
-            
+    	Represents a "Single" roll up field, it contains
+    	- Master field where the rolled up info will be saved
+    	- Detail field that will be rolled up via any operation i.e. sum, avg etc 
+    	- Operation to perform i.e. sum, avg, count etc
+    		
     */
     public class RollupSummaryField {
         public Schema.Describefieldresult master;
@@ -184,44 +199,41 @@ public class LREngine {
     }
     
     /**
-        Context having all the information about the rollup to be done. 
-        Please note : This class encapsulates many rollup summary fields with different operations.
+    	Context having all the information about the rollup to be done. 
+    	Please note : This class encapsulates many rollup summary fields with different operations.
     */
-    public class Context {
-        // Master Sobject Type
-        public Schema.Sobjecttype master;
-        // Child/Details Sobject Type
-        public Schema.Sobjecttype detail;
-        // Lookup field on Child/Detail Sobject
-        public Schema.Describefieldresult lookupField;
-        // various fields to rollup on
-        public List<RollupSummaryField> fieldsToRoll;
-        // changed records detail sobject's trigger, these will be coming via Trigger.new/old
-        public Sobject[] detailRecordsFromTrigger;
-        
-        // Where clause or filters to apply while aggregating detail records
-        public String detailWhereClause;            
-        
-        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
-                           Schema.Describefieldresult lf, Sobject[] detailRecordsFromTrigger) {
-            this(m, d, lf, detailRecordsFromTrigger, '');                               
+	public class Context {
+	    // Master Sobject Type
+	    public Schema.Sobjecttype master;
+	    // Child/Details Sobject Type
+	    public Schema.Sobjecttype detail;
+	    // Lookup field on Child/Detail Sobject
+	    public Schema.Describefieldresult lookupField;
+	    // various fields to rollup on
+	    public List<RollupSummaryField> fieldsToRoll;
+		
+		// Where clause or filters to apply while aggregating detail records
+		public String detailWhereClause;		    
+		
+	    public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
+                           Schema.Describefieldresult lf) {
+			this(m, d, lf, '');                           	
         }
         
-        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
-                           Schema.Describefieldresult lf, Sobject[] detailRecordsFromTrigger, String detailWhereClause) {
-            this.master = m;
-            this.detail = d;
-            this.lookupField = lf;
-            this.detailRecordsFromTrigger = detailRecordsFromTrigger;
-            this.detailWhereClause = detailWhereClause;
-            this.fieldsToRoll = new List<RollupSummaryField>();
-        }
-        
-        /**
-            Adds new rollup summary fields to the context
-        */
-        public void add(RollupSummaryField fld) {
-            this.fieldsToRoll.add(fld);
-        }
-    }    
+	    public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
+                           Schema.Describefieldresult lf, String detailWhereClause) {
+	        this.master = m;
+	        this.detail = d;
+	        this.lookupField = lf;
+	        this.detailWhereClause = detailWhereClause;
+	        this.fieldsToRoll = new List<RollupSummaryField>();
+	    }
+	    
+	    /**
+	    	Adds new rollup summary fields to the context
+	    */
+	    public void add(RollupSummaryField fld) {
+	        this.fieldsToRoll.add(fld);
+	    }
+	}    
 }

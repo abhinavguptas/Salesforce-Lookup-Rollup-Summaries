@@ -104,9 +104,9 @@ private class TestLREngine {
     	// create seed data 
          prepareData();
          
-         LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
+         LREngine.Context ctx = new LREngine.Context(Account.SobjectType,  
                                                 Opportunity.SobjectType, 
-                                                Schema.SObjectType.Opportunity.fields.AccountId, detailRecords);
+                                                Schema.SObjectType.Opportunity.fields.AccountId);
          
          //Select o.TotalOpportunityQuantity, o.ExpectedRevenue, o.CloseDate, o.Account.rollups__SLAExpirationDate__c, 
          // o.Account.rollups__NumberofLocations__c, o.AccountId From Opportunity o
@@ -123,7 +123,7 @@ private class TestLREngine {
 	                                            LREngine.RollupOperation.Max
                                              ));                                       
                 
-         Sobject[] masters = LREngine.rollUp(ctx);                 
+         Sobject[] masters = LREngine.rollUp(ctx, detailRecords);                 
          // 2 masters should be back  
          System.assertEquals(2, masters.size());
          
@@ -151,7 +151,7 @@ private class TestLREngine {
          
          LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
                                                 Opportunity.SobjectType, 
-                                                Schema.SObjectType.Opportunity.fields.AccountId, detailRecords);
+                                                Schema.SObjectType.Opportunity.fields.AccountId);
          
          //Select o.TotalOpportunityQuantity, o.ExpectedRevenue, o.CloseDate, o.Account.rollups__SLAExpirationDate__c, 
          // o.Account.rollups__NumberofLocations__c, o.AccountId From Opportunity o
@@ -168,7 +168,7 @@ private class TestLREngine {
 	                                            LREngine.RollupOperation.Count
                                              ));                                       
                 
-         Sobject[] masters = LREngine.rollUp(ctx);                 
+         Sobject[] masters = LREngine.rollUp(ctx, detailRecords);                 
          // 2 masters should be back  
          System.assertEquals(2, masters.size());
          
@@ -198,7 +198,7 @@ private class TestLREngine {
          
          LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
                                                 Opportunity.SobjectType, 
-                                                Schema.SObjectType.Opportunity.fields.AccountId, detailRecords,
+                                                Schema.SObjectType.Opportunity.fields.AccountId,
                                                 'Amount > 200' // filter out any opps with amount less than 200
                                                 );
          
@@ -217,7 +217,7 @@ private class TestLREngine {
 	                                            LREngine.RollupOperation.Count
                                              ));                                       
                 
-         Sobject[] masters = LREngine.rollUp(ctx);                 
+         Sobject[] masters = LREngine.rollUp(ctx, detailRecords);                 
          // 2 masters should be back  
          System.assertEquals(2, masters.size());
          
