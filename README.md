@@ -96,7 +96,7 @@ Set<Id> masterRecordIds = // master record ids as per the business logic
 Sobject[] masters = LREngine.rollUp(ctx, masterRecordIds);   
 ```
 
-## Adding some conditional filtering to the rollup operation
+### Adding some conditional filtering to the rollup operation
 Doing this is pretty easy, just add the condition in the Context constructor as shown below 
 ```java
 LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
