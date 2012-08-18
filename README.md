@@ -1,14 +1,14 @@
 # What problem are we trying to solve ?
 
-Rollup summary fields are pretty common requirement in force.com customizations and app development. Rollups are easy to create on master-detail relationships as they are available as a field type. But on certain situations we need to write code(Trigger/Apex/Batch) for rolling up the child information for common aggregations like COUNT, SUM, AVG, MAX/MIN etc, some of these situations are
+Rollup summary fields are pretty common requirement in force.com customizations and app development. Rollups are easy to create on master-detail relationships as they are available as a field type. But on certain limits/situations we need to write apex code for rolling up the child information for common aggregations like COUNT, SUM, AVG, MAX/MIN etc, some of these limitations are
  * [Only 10 rollup summary fields allowed per object on master detail relationships](http://ap1.salesforce.com/help/doc/en/limits.htm#CustomFieldLimitDetails)
- * Rollup child sobject records part of a lookup relationship.
+ * Rollup child sobject records part of a lookup relationship. Native rollup summary fields are not available on LOOKUP relationships.
 
-# How we solved this problem in past (Usual approach) ?
+The 'USUAL' approach to handle this limitation is to either
+ * Write trigger on various DML(reate, Update, Delete/Undelete) events on child sobject. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same.   
+ * Write some batch/scheduled apex to perform this nightly.
 
-Such manual aggregations on parent fields are usually done by Batch Apex or Triggers on CUD(Create, Update, Delete/Undelete) events. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same. 
-
-## Problem in using usual approach ?
+## Problem in USUAL approach ?
 Most of the times the rollup code/logic is pretty similar. Bigger problem happens sometimes in following situation
  * Client asked for a rollup field on lookup
    * Developer added a trigger on child object with required events
