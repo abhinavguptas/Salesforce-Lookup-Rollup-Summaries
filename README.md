@@ -81,3 +81,14 @@ trigger OppRollup on Opportunity (after insert, after update,
      update masters;
 }
 ```
+
+## Adding some conditional filtering to the rollup operation
+Doing this is pretty easy, just add the condition in the Context constructor as shown below 
+```java
+LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
+	                        Opportunity.SobjectType, 
+	                        Schema.SObjectType.Opportunity.fields.AccountId, detailRecords,
+	                        'Amount > 200' // filter out any opps with amount less than 200
+	                        );
+
+```
