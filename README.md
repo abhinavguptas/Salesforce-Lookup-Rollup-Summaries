@@ -20,12 +20,12 @@ Most of the times the rollup code/logic is pretty similar. Bigger problem happen
   - Number of records fetched
   - Script statements consumed
 
- ## How this Open Source lib solves the problem
- This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup Engine, which 
-  * Performs rollup on multiple such fields in a single aggregate soql query. 
-  * Allows easy addition/removal of new fields to rollup as requirement changes over the span of time.
-  * Developer needs to write only a single trigger for multiple rollup fields.
-  * Allows developer to filter the child records getting rolled up, just like standard rollup summary fields
- 
+## How this Open Source lib solves the problem
+This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup Engine, which 
+ * Performs rollup on multiple such fields in a single aggregate soql query. 
+ * Allows easy addition/removal of new fields to rollup as requirement changes over the span of time.
+ * Developer needs to write only a single trigger for multiple rollup fields.
+ * Allows developer to filter the child records getting rolled up, just like standard rollup summary fields
+
 
 
