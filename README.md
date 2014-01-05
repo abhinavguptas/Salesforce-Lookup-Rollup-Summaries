@@ -103,7 +103,7 @@ Doing this is pretty easy, just add the condition in the Context constructor as 
 ```java
 LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
 	                        Opportunity.SobjectType, 
-	                        Schema.SObjectType.Opportunity.fields.AccountId, detailRecords,
+	                        Schema.SObjectType.Opportunity.fields.AccountId,
 	                        'Amount > 200' // filter out any opps with amount less than 200
 	                        );
 
