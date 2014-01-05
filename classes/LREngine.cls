@@ -113,7 +113,7 @@ public class LREngine {
     	String grpByFld = ctx.lookupField.getName();
     	
     	String soql = String.format(SOQL_TEMPLATE, new String[]{soqlProjection, detailTblName, whereClause, grpByFld});
-    	System.debug(soql);
+    	
     	// aggregated results 
     	List<AggregateResult> results = Database.query(soql);
     	
