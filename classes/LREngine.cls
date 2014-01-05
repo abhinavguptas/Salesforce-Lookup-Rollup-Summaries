@@ -80,11 +80,24 @@ public class LREngine {
     	String soqlProjection = ctx.lookupField.getName();
     	// k: detail field name, v: master field name
     	Map<String, String> detail2MasterFldMap = new Map<String, String>();
+    	// k: detail field name, v: detail field small alias
+    	Map<String, String> detailFld2AliasMap = new Map<String, String>();
+    	Integer aliasCounter = 1; 
     	for (RollupSummaryField rsf : ctx.fieldsToRoll) {
+    		/* Keeping alias short i.e. d1, d2...dn to allow more chars in SOQL to avoid SOQL char limit.
+    			It also helps in avoiding this exception when field names are more than 25 chars i.e.
+    			System.QueryException: alias is too long, maximum of 25 characters: Annualized_Recurring_Revenue__c
+    			
+    			A Sample query with new alias format will look like following
+    			SELECT AccountId, Avg(Amount) d1, Count(CloseDate) d2 FROM Opportunity  GROUP BY AccountId
+    		*/
+    		String aliasName = 'd' + aliasCounter++; 
     		// create aggreate projection with alias for easy fetching via AggregateResult class
     		// i.e. SUM(Amount) Amount
-    		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + rsf.detail.getName();
+    		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + aliasName;
     		detail2MasterFldMap.put(rsf.detail.getName(), rsf.master.getName());
+    		// store the alias for the detail field name, it will be used for loading up later
+    		detailFld2AliasMap.put(rsf.detail.getName(), aliasName);
     	}
 		
     	// #1 token for SOQL_TEMPLATE
@@ -100,6 +113,7 @@ public class LREngine {
     	String grpByFld = ctx.lookupField.getName();
     	
     	String soql = String.format(SOQL_TEMPLATE, new String[]{soqlProjection, detailTblName, whereClause, grpByFld});
+    	System.debug(soql);
     	// aggregated results 
     	List<AggregateResult> results = Database.query(soql);
     	
@@ -112,7 +126,9 @@ public class LREngine {
 			}
 			
 			for (String detailFld : detail2MasterFldMap.keySet()) {
-				Object aggregatedDetailVal = res.get(detailFld);
+				// Load the alias name to fetch the value from the aggregated result
+				String aliasName = detailFld2AliasMap.get(detailFld);
+				Object aggregatedDetailVal = res.get(aliasName);
 				masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
 			}    		
     	}
