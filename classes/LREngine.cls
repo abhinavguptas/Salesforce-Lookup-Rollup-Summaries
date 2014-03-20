@@ -38,6 +38,7 @@ public class LREngine {
 			3 : Group By field name
 	*/
 	static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} {2} GROUP BY {3}';
+	static String COUNT_SOQL_TEMPLATE = 'SELECT Id FROM {0} WHERE Id NOT IN (SELECT {1} FROM {2})';
 	
 	/**
 		Key driver method that rolls up lookup fields based on the context. This is specially useful in Trigger context.
@@ -131,6 +132,25 @@ public class LREngine {
 				Object aggregatedDetailVal = res.get(aliasName);
 				masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
 			}    		
+    	}
+		
+		//since the aggregate query above won't return any results when there are zero child records, 
+    	//we need to do another query to get these records
+    	String masterTblName = ctx.master.getDescribe().getName();
+    	soql = String.format(COUNT_SOQL_TEMPLATE, new String[]{masterTblName, grpByFld, detailTblName});
+    	List<SObject> zeroChildrenRes = Database.query(soql);
+    	for (SObject obj : zeroChildrenRes) {
+    		Id masterRecId = obj.Id;
+    		Sobject masterObj = masterRecordsMap.get(masterRecId);
+    		if (masterObj == null) {
+    			System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
+				continue;
+    		}
+    		
+    		//Since none of these master records have any children, just null this rollup
+    		for (String detailFld : detail2MasterFldMap.keySet()) {
+				masterObj.put(detail2MasterFldMap.get(detailFld), null);
+			} 
     	}
     	
     	return masterRecordsMap.values();	
