@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012 tgerm.com
+Copyright (c) tgerm.com
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,20 @@ private class TestLREngine {
 		static Account acc1, acc2;
 		// common bunch of detail records for the test case
 		static Opportunity[] detailRecords;
-		
+		static Opportunity[] detailRecordsAcc1;
+		// dynamic reference to this field to avoid it being included in the package
+		static Schema.SObjectField ACCOUNT_SLA_EXPIRATION_DATE;
+		static Schema.SObjectField ACCOUNT_NUMBER_OF_LOCATIONS;		
+        static Schema.SObjectField ANNUALIZED_RECCURING_REVENUE;
+		static
+		{
+			// dynamically resolve these fields, if they are not present when the test runs, the test will return as passed to avoid failures in subscriber org when packaged
+			Map<String, Schema.SObjectField> accountFields = Schema.SObjectType.Account.fields.getMap();
+			ACCOUNT_SLA_EXPIRATION_DATE = accountFields.get('SLAExpirationDate__c');
+			ACCOUNT_NUMBER_OF_LOCATIONS = accountFields.get('NumberOfLocations__c');
+            Map<String, Schema.SObjectField> opportunityFields = Schema.SObjectType.Opportunity.fields.getMap();
+            ANNUALIZED_RECCURING_REVENUE = opportunityFields.get('Annualized_Recurring_Revenue__c');            
+		}
 		
 		/*
 		 creates the common seed data using Opportunity and Account objects. 
@@ -93,6 +106,10 @@ private class TestLREngine {
 	                                                StageName = 'test'
 	         									);
 	         detailRecords = new Opportunity[] {o1Acc1, o2Acc1, o3Acc1, o1Acc2, o2Acc2, o3Acc2};
+             if(ANNUALIZED_RECCURING_REVENUE!=null)
+                for(Opportunity detailRecord : detailRecords)
+                    detailRecord.put(ANNUALIZED_RECCURING_REVENUE, 1000);
+	         detailRecordsAcc1 = new Opportunity[] {o1Acc1, o2Acc1, o3Acc1};
 	         insert detailRecords;			
 		}		
 
@@ -101,6 +118,11 @@ private class TestLREngine {
 		Tests sum and max operations on currency and date fields
 	*/
     static testMethod void testSumAndMaxOperations() {
+    	    	
+        // Required custom field/s present?
+        if(ACCOUNT_SLA_EXPIRATION_DATE==null)
+            return;
+
     	// create seed data 
          prepareData();
          
@@ -118,12 +140,12 @@ private class TestLREngine {
                                              )); 
          ctx.add(
          		new LREngine.RollupSummaryField(
-	                                            Schema.SObjectType.Account.fields.SLAExpirationDate__c,
+	                                            ACCOUNT_SLA_EXPIRATION_DATE.getDescribe(),
 	                                            Schema.SObjectType.Opportunity.fields.CloseDate,
 	                                            LREngine.RollupOperation.Max
                                              ));                                       
                 
-         Sobject[] masters = LREngine.rollUp(ctx, detailRecords);                 
+         Sobject[] masters = LREngine.rollUp(ctx, detailRecords);  
          // 2 masters should be back  
          System.assertEquals(2, masters.size());
          
@@ -136,8 +158,8 @@ private class TestLREngine {
          System.assertEquals(450.00, reloadedAcc1.AnnualRevenue);
          System.assertEquals(900.00, reloadedAcc2.AnnualRevenue);
          
-         System.assertEquals(System.today().addMonths(1), reloadedAcc1.SLAExpirationDate__c);
-         System.assertEquals(System.today().addMonths(4), reloadedAcc2.SLAExpirationDate__c);
+         System.assertEquals(System.today().addMonths(1), reloadedAcc1.get(ACCOUNT_SLA_EXPIRATION_DATE));
+         System.assertEquals(System.today().addMonths(4), reloadedAcc2.get(ACCOUNT_SLA_EXPIRATION_DATE));
          
     }
     
@@ -146,6 +168,11 @@ private class TestLREngine {
 		Tests sum and max operations on currency and date fields
 	*/
     static testMethod void testAvgAndCountOperations() {
+    	
+        // Required custom field/s present?
+        if(ACCOUNT_NUMBER_OF_LOCATIONS==null)
+            return;
+
     	// create seed data 
          prepareData();
          
@@ -163,7 +190,7 @@ private class TestLREngine {
                                              )); 
          ctx.add(
          		new LREngine.RollupSummaryField(
-	                                            Schema.SObjectType.Account.fields.NumberofLocations__c,
+	                                            ACCOUNT_NUMBER_OF_LOCATIONS.getDescribe(),
 	                                            Schema.SObjectType.Opportunity.fields.CloseDate,
 	                                            LREngine.RollupOperation.Count
                                              ));                                       
@@ -182,8 +209,8 @@ private class TestLREngine {
          System.assertEquals(150.00, reloadedAcc1.AnnualRevenue);
          System.assertEquals(300.00, reloadedAcc2.AnnualRevenue);
          
-         System.assertEquals(3, reloadedAcc1.NumberofLocations__c);
-         System.assertEquals(3, reloadedAcc2.NumberofLocations__c);
+         System.assertEquals(3, reloadedAcc1.get(ACCOUNT_NUMBER_OF_LOCATIONS));
+         System.assertEquals(3, reloadedAcc2.get(ACCOUNT_NUMBER_OF_LOCATIONS));
     }
     
     
@@ -193,6 +220,11 @@ private class TestLREngine {
 		Here we will pass our custom criteria to filter certain records in detail, just like master detail rollup fields
 	*/
     static testMethod void testAvgAndCountOperationsWithFilter() {
+    	
+        // Required custom field/s present?
+        if(ACCOUNT_NUMBER_OF_LOCATIONS==null)
+            return;
+
     	// create seed data 
          prepareData();
          
@@ -212,7 +244,7 @@ private class TestLREngine {
                                              )); 
          ctx.add(
          		new LREngine.RollupSummaryField(
-	                                            Schema.SObjectType.Account.fields.NumberofLocations__c,
+	                                            ACCOUNT_NUMBER_OF_LOCATIONS.getDescribe(),
 	                                            Schema.SObjectType.Opportunity.fields.CloseDate,
 	                                            LREngine.RollupOperation.Count
                                              ));                                       
@@ -231,22 +263,93 @@ private class TestLREngine {
          System.assertEquals(300, reloadedAcc1.AnnualRevenue);
          System.assertEquals(350.00, reloadedAcc2.AnnualRevenue);
          
-         System.assertEquals(1, reloadedAcc1.NumberofLocations__c);
-         System.assertEquals(2, reloadedAcc2.NumberofLocations__c);
+         System.assertEquals(1, reloadedAcc1.get(ACCOUNT_NUMBER_OF_LOCATIONS));
+         System.assertEquals(2, reloadedAcc2.get(ACCOUNT_NUMBER_OF_LOCATIONS));
+    }
+
+    /**
+     * Test fix where rollup field on master records where not
+     * cleared or zerod when all children deleted
+     **/
+    static testMethod void testDeletingChildRecords()
+    {
+        // create seed data 
+        prepareData();
+
+        LREngine.Context ctx = new LREngine.Context(
+            Account.SobjectType, 
+            Opportunity.SobjectType, 
+            Schema.SObjectType.Opportunity.fields.AccountId,
+            'Amount > 200'); // filter out any opps with amount less than 200
+        ctx.add(
+            new LREngine.RollupSummaryField(
+                Schema.SObjectType.Account.fields.AnnualRevenue,
+                Schema.SObjectType.Opportunity.fields.Amount,
+                LREngine.RollupOperation.Avg)); 
+
+        Sobject[] masters = LREngine.rollUp(ctx, detailRecords);
+        Map<Id, Sobject> mastersById = new Map<Id, Sobject>(masters);
+        System.assertEquals(2, masters.size());         
+        System.assertEquals(300, ((Account)mastersById.get(acc1.id)).AnnualRevenue);
+        System.assertEquals(350.00, ((Account)mastersById.get(acc2.id)).AnnualRevenue);
+
+        // Delete all children
+        delete [select Id from Opportunity];
+
+        // Recacluate rollups again
+        masters = LREngine.rollUp(ctx, detailRecords);  
+        mastersById = new Map<Id, Sobject>(masters);               
+        System.assertEquals(0, ((Account)mastersById.get(acc1.id)).AnnualRevenue);
+        System.assertEquals(0, ((Account)mastersById.get(acc2.id)).AnnualRevenue);
     }
     
-    
-    
-     
-    /*
-    	Fixed crash when using field names longer then 25 chars.
-    	System.QueryException: alias is too long, maximum of 25 characters: Annualized_Recurring_Revenue__c
-	*/
-	/*
-	To test this please create a custom Number field by api name "Annualized_Recurring_Revenue__c" in Opportunity
- 	Then uncomment this test method
-    static testMethod void testLongDetailFields() {
+    /**
+     * Test enhancement to ensure the SOQL Aggregate only applies to child records 
+     *  related to masters referenced in incoming child records
+     **/
+    static testMethod void testConstrainedAggregateQuery()
+    {
+        // Required custom field/s present?
+        if(ACCOUNT_SLA_EXPIRATION_DATE==null)
+            return;
+
     	// create seed data 
+         prepareData();
+         
+         LREngine.Context ctx = new LREngine.Context(Account.SobjectType,  
+                                                Opportunity.SobjectType, 
+                                                Schema.SObjectType.Opportunity.fields.AccountId);         
+         ctx.add(
+                new LREngine.RollupSummaryField(
+	                                            Schema.SObjectType.Account.fields.AnnualRevenue,
+	                                            Schema.SObjectType.Opportunity.fields.Amount,
+	                                            LREngine.RollupOperation.Sum
+                                             )); 
+         ctx.add(
+         		new LREngine.RollupSummaryField(
+	                                            ACCOUNT_SLA_EXPIRATION_DATE.getDescribe(),
+	                                            Schema.SObjectType.Opportunity.fields.CloseDate,
+	                                            LREngine.RollupOperation.Max
+                                             ));                                       
+                
+         Sobject[] masters = LREngine.rollUp(ctx, detailRecordsAcc1);      
+         
+         // Only expect to have queried 3 child records related to Account 1
+         System.assertEquals(3, Limits.getQueryRows());	
+    }
+
+    /*
+        Fixed crash when using field names longer then 25 chars.
+        System.QueryException: alias is too long, maximum of 25 characters: Annualized_Recurring_Revenue__c
+        To test this please create a custom Number field by api name "Annualized_Recurring_Revenue__c" in Opportunity
+    */
+    static testMethod void testLongDetailFields() {
+
+        // Required custom field/s present?
+        if(ANNUALIZED_RECCURING_REVENUE==null)
+            return;
+
+        // create seed data 
          prepareData();
          
          LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
@@ -257,9 +360,9 @@ private class TestLREngine {
          
          ctx.add(
                 new LREngine.RollupSummaryField(
-	                                            Schema.SObjectType.Account.fields.NumberofLocations__c,
-	                                            Schema.SObjectType.Opportunity.fields.Annualized_Recurring_Revenue__c,
-	                                            LREngine.RollupOperation.Count
+                                                ACCOUNT_NUMBER_OF_LOCATIONS.getDescribe(),
+                                                ANNUALIZED_RECCURING_REVENUE.getDescribe(),
+                                                LREngine.RollupOperation.Count
                                              )); 
                 
          Sobject[] masters = LREngine.rollUp(ctx, detailRecords);                 
@@ -272,8 +375,7 @@ private class TestLREngine {
             if (so.Id == acc2.id) reloadedAcc2 = (Account)so;
          }
          
-         System.assertEquals(1, reloadedAcc1.NumberofLocations__c);
-         System.assertEquals(2, reloadedAcc2.NumberofLocations__c);
+         System.assertEquals(1, reloadedAcc1.get(ACCOUNT_NUMBER_OF_LOCATIONS));
+         System.assertEquals(2, reloadedAcc2.get(ACCOUNT_NUMBER_OF_LOCATIONS));
     }
-    */
 }
