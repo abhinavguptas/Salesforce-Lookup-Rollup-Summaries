@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012 tgerm.com
+Copyright (c) tgerm.com
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,7 +37,7 @@ public class LREngine {
 			2 : Optional WHERE clause filter to add
 			3 : Group By field name
 	*/
-	static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} {2} GROUP BY {3}';
+	static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} WHERE {3} in :masterIds {2} GROUP BY {3}';
 	
 	/**
 		Key driver method that rolls up lookup fields based on the context. This is specially useful in Trigger context.
@@ -69,6 +69,8 @@ public class LREngine {
 				because we want client or calling code to have this freedom to do some post processing and update when required.
 	*/
 	public static Sobject[] rollUp(Context ctx,  Set<Id> masterIds) {
+		// Clone this since we are about to modify it later
+		masterIds = masterIds.clone();
         // K: Id of master record
         // V: Empty sobject with ID field, this will be used for updating the masters
         Map<Id, Sobject> masterRecordsMap = new Map<Id, Sobject>(); 
@@ -79,25 +81,16 @@ public class LREngine {
     	// #0 token : SOQL projection
     	String soqlProjection = ctx.lookupField.getName();
     	// k: detail field name, v: master field name
+    	Integer exprIdx = 0;
     	Map<String, String> detail2MasterFldMap = new Map<String, String>();
-    	// k: detail field name, v: detail field small alias
-    	Map<String, String> detailFld2AliasMap = new Map<String, String>();
-    	Integer aliasCounter = 1; 
+    	Map<String, String> detail2AliasMap = new Map<String, String>();
     	for (RollupSummaryField rsf : ctx.fieldsToRoll) {
-    		/* Keeping alias short i.e. d1, d2...dn to allow more chars in SOQL to avoid SOQL char limit.
-    			It also helps in avoiding this exception when field names are more than 25 chars i.e.
-    			System.QueryException: alias is too long, maximum of 25 characters: Annualized_Recurring_Revenue__c
-    			
-    			A Sample query with new alias format will look like following
-    			SELECT AccountId, Avg(Amount) d1, Count(CloseDate) d2 FROM Opportunity  GROUP BY AccountId
-    		*/
-    		String aliasName = 'd' + aliasCounter++; 
     		// create aggreate projection with alias for easy fetching via AggregateResult class
     		// i.e. SUM(Amount) Amount
-    		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + aliasName;
+    		String alias = 'lre'+exprIdx++; // Calculate an alias, using field name blew the 25 character limit in some cases
+    		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + alias;
     		detail2MasterFldMap.put(rsf.detail.getName(), rsf.master.getName());
-    		// store the alias for the detail field name, it will be used for loading up later
-    		detailFld2AliasMap.put(rsf.detail.getName(), aliasName);
+    		detail2AliasMap.put(rsf.detail.getName(), alias);
     	}
 		
     	// #1 token for SOQL_TEMPLATE
@@ -106,14 +99,15 @@ public class LREngine {
     	// #2 Where clause
     	String whereClause = '';
     	if (ctx.detailWhereClause != null && ctx.detailWhereClause.trim().length() > 0) {
-    		whereClause = 'WHERE ' + ctx.detailWhereClause ;
+    		whereClause = 'AND ' + ctx.detailWhereClause ;
     	}
     	
     	// #3 Group by field
     	String grpByFld = ctx.lookupField.getName();
     	
     	String soql = String.format(SOQL_TEMPLATE, new String[]{soqlProjection, detailTblName, whereClause, grpByFld});
-    	
+        System.debug('SOQL is ' + soql);
+
     	// aggregated results 
     	List<AggregateResult> results = Database.query(soql);
     	
@@ -126,12 +120,19 @@ public class LREngine {
 			}
 			
 			for (String detailFld : detail2MasterFldMap.keySet()) {
-				// Load the alias name to fetch the value from the aggregated result
-				String aliasName = detailFld2AliasMap.get(detailFld);
-				Object aggregatedDetailVal = res.get(aliasName);
+				Object aggregatedDetailVal = res.get(detail2AliasMap.get(detailFld));
+				System.debug(LoggingLevel.INFO, 'New aggregarte value ' + aggregatedDetailVal + ' for master ' + masterRecId);
 				masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
-			}    		
+			} 			
+			// Remove master Id record as its been processed   	
+			masterIds.remove(masterRecId);	
     	}
+    	
+    	// Zero rollups for unprocessed master records (those with no longer any child relationships)
+    	for(Id masterRecId : masterIds)
+    		for (RollupSummaryField rsf : ctx.fieldsToRoll)
+				masterRecordsMap.get(masterRecId).put(rsf.master.getName(), 
+					rsf.isMasterTypeNumber ? 0 : null);
     	
     	return masterRecordsMap.values();	
     }
