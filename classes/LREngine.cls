@@ -105,9 +105,9 @@ public class LREngine {
     	String detailTblName = ctx.detail.getDescribe().getName();
     	
     	// #2 Where clause
-    	String whereClause = '';
+    	String whereClause = 'WHERE ' + ctx.lookupField.getName() + ' IN :masterIds ';
     	if (ctx.detailWhereClause != null && ctx.detailWhereClause.trim().length() > 0) {
-    		whereClause = 'WHERE ' + ctx.detailWhereClause ;
+    		whereClause = 'AND ' + ctx.detailWhereClause ;
     	}
     	
     	// #3 Group by field
@@ -134,7 +134,7 @@ public class LREngine {
 			}    		
     	}
 		
-		//since the aggregate query above won't return any results when there are zero child records, 
+	//since the aggregate query above won't return any results when there are zero child records, 
     	//we need to do another query to get these records
     	String masterTblName = ctx.master.getDescribe().getName();
     	soql = String.format(COUNT_SOQL_TEMPLATE, new String[]{masterTblName, grpByFld, detailTblName});
@@ -144,13 +144,13 @@ public class LREngine {
     		Sobject masterObj = masterRecordsMap.get(masterRecId);
     		if (masterObj == null) {
     			System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
-				continue;
+			continue;
     		}
     		
     		//Since none of these master records have any children, just null this rollup
     		for (String detailFld : detail2MasterFldMap.keySet()) {
-				masterObj.put(detail2MasterFldMap.get(detailFld), null);
-			} 
+			masterObj.put(detail2MasterFldMap.get(detailFld), null);
+		} 
     	}
     	
     	return masterRecordsMap.values();	
