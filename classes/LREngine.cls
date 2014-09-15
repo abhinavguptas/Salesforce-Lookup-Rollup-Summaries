@@ -48,7 +48,7 @@ public class LREngine {
 	private static Boolean m_IsMultiCurrency = null;
 	public static Boolean IsMultiCurrencyOrg() {
 		if(m_IsMultiCurrency!=null) return m_IsMultiCurrency;
-		m_IsMultiCurrency = UserInfo.isMultiCurrencyOrganization();
+		m_IsMultiCurrency = Schema.SObjectType.Opportunity.fields.GetMap().Get(CURRENCYISOCODENAME) != null;
 		return m_IsMultiCurrency;
 	}
 
@@ -58,9 +58,8 @@ public class LREngine {
 
 	if(currencyConversionMap == null){
 		currencyConversionMap = new Map<String,Decimal>();
-		String query = 'select IsoCode, ConversionRate from CurrencyType where IsActive = true';
-		for(sObject ct : Database.query(query)){
-			currencyConversionMap.put((String)ct.get('IsoCode'), (Decimal)ct.get('ConversionRate'));
+		for(CurrencyType ct : [select IsoCode, ConversionRate from CurrencyType where IsActive = true]){
+			currencyConversionMap.put(ct.IsoCode, ct.ConversionRate);
 		}
 	}
 
