@@ -60,14 +60,14 @@ private class TestLREngine {
 		private static Boolean m_IsMultiCurrency = null;
 		public static Boolean IsMultiCurrencyOrg() {
 			if(m_IsMultiCurrency!=null) return m_IsMultiCurrency;
-			m_IsMultiCurrency = Schema.SObjectType.Opportunity.fields.GetMap().Get(CURRENCYISOCODENAME) != null;
+            m_IsMultiCurrency = UserInfo.isMultiCurrencyOrganization();
 			return m_IsMultiCurrency;
 		}
 
 		private static Boolean m_HasMultiCurrency = null;
 		public static Boolean hasMultiCurrency() {
 			if(m_HasMultiCurrency!=null) return m_HasMultiCurrency;
-			m_HasMultiCurrency = [select count() from CurrencyType WHERE IsActive = true AND IsCorporate = false AND ConversionRate != 1] > 0;
+			m_HasMultiCurrency = (Database.countQuery('select count() from CurrencyType WHERE IsActive = true AND IsCorporate = false AND ConversionRate != 1') > 0);
 			return m_HasMultiCurrency;
 		}
 		
@@ -414,8 +414,8 @@ private class TestLREngine {
 		prepareData();
 
 		// change the currency of one of the master records to force currency conversion
-		CurrencyType ct = [select IsoCode, ConversionRate from CurrencyType where IsActive = true AND IsCorporate = false AND ConversionRate != 1 limit 1];
-		acc1.put(CURRENCYISOCODENAME, ct.IsoCode);
+		sObject ct = Database.query('select IsoCode, ConversionRate from CurrencyType where IsActive = true AND IsCorporate = false AND ConversionRate != 1 limit 1');
+		acc1.put(CURRENCYISOCODENAME, ct.get('IsoCode'));
 		update acc1;
 
 		//change currency of one account
@@ -439,10 +439,10 @@ private class TestLREngine {
 			if(so.get('AccountId') == acc1.Id) acct1Val += (Decimal)so.get('Amount');
 			if(so.get('AccountId') == acc2.Id) acct2Val += (Decimal)so.get('Amount');
 		}
-		System.Debug('Conversion Rate:'+ct.ConversionRate);
+		System.Debug('Conversion Rate:'+ct.get('ConversionRate'));
 		System.Debug('Acct1 Val:'+acct1Val);
 
-		acct1Val = acct1Val * ct.ConversionRate;
+		acct1Val = acct1Val * (Decimal)ct.get('ConversionRate');
 
 		System.Debug('Acct1 Conv Val:'+acct1Val);
 
