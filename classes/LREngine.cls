@@ -53,18 +53,14 @@ public class LREngine {
 	}
 
 	// Currency lookup
+	static final Map<String,Decimal> currencyConversionMap = new Map<String,Decimal>();
 	private static Decimal convertCurrency(String iso, Decimal val) {
-	final Map<String,Decimal> currencyConversionMap;
-
-	if(currencyConversionMap == null){
-		currencyConversionMap = new Map<String,Decimal>();
-		String query = 'select IsoCode, ConversionRate from CurrencyType where IsActive = true';
-		for(sObject ct : Database.query(query)){
-			currencyConversionMap.put((String)ct.get('IsoCode'), (Decimal)ct.get('ConversionRate'));
+		if(currencyConversionMap.isEmpty()){
+			String query = 'select IsoCode, ConversionRate from CurrencyType where IsActive = true';
+			for(sObject ct : Database.query(query))
+				currencyConversionMap.put((String)ct.get('IsoCode'), (Decimal)ct.get('ConversionRate'));
 		}
-	}
-
-	return val * currencyConversionMap.get(iso);
+		return val * currencyConversionMap.get(iso);
 	}
 
 	/**
