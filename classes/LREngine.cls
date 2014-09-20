@@ -39,6 +39,30 @@ public class LREngine {
 	*/
 	static String SOQL_TEMPLATE = 'SELECT {0} FROM {1} WHERE {3} in :masterIds {2} GROUP BY {3}';
 	
+	/*
+	Support for multi-currency orgs
+	*/
+	static String MASTERCURRENCYALIAS = 'mastercc';
+	public static String CURRENCYISOCODENAME = 'CurrencyIsoCode';
+	//http://advancedapex.com/2013/07/07/optional-features/
+	private static Boolean m_IsMultiCurrency = null;
+	public static Boolean IsMultiCurrencyOrg() {
+		if(m_IsMultiCurrency!=null) return m_IsMultiCurrency;
+		m_IsMultiCurrency = UserInfo.isMultiCurrencyOrganization();
+		return m_IsMultiCurrency;
+	}
+
+	// Currency lookup
+	static final Map<String,Decimal> currencyConversionMap = new Map<String,Decimal>();
+	private static Decimal convertCurrency(String iso, Decimal val) {
+		if(currencyConversionMap.isEmpty()){
+			String query = 'select IsoCode, ConversionRate from CurrencyType where IsActive = true';
+			for(sObject ct : Database.query(query))
+				currencyConversionMap.put((String)ct.get('IsoCode'), (Decimal)ct.get('ConversionRate'));
+		}
+		return val * currencyConversionMap.get(iso);
+	}
+
 	/**
 		Key driver method that rolls up lookup fields based on the context. This is specially useful in Trigger context.
 		
@@ -82,8 +106,10 @@ public class LREngine {
     	String soqlProjection = ctx.lookupField.getName();
     	// k: detail field name, v: master field name
     	Integer exprIdx = 0;
+		Boolean needsCurrency = false;
     	Map<String, String> detail2MasterFldMap = new Map<String, String>();
     	Map<String, String> detail2AliasMap = new Map<String, String>();
+        Map<String, Boolean> isFieldCurrencyMap = new Map<String, Boolean>();
     	for (RollupSummaryField rsf : ctx.fieldsToRoll) {
     		// create aggreate projection with alias for easy fetching via AggregateResult class
     		// i.e. SUM(Amount) Amount
@@ -91,8 +117,19 @@ public class LREngine {
     		soqlProjection += ', ' + rsf.operation + '(' + rsf.detail.getName() + ') ' + alias;
     		detail2MasterFldMap.put(rsf.detail.getName(), rsf.master.getName());
     		detail2AliasMap.put(rsf.detail.getName(), alias);
+			isFieldCurrencyMap.put(rsf.detail.getName(), rsf.isMasterTypeCurrency);
+			if(IsMultiCurrencyOrg() == true && needsCurrency == false && rsf.isMasterTypeCurrency){
+				needsCurrency = true;
+			}
     	}
 		
+		// Add a field selection to get the currency from the parent record if we are depositing values into a currency field
+		if(IsMultiCurrencyOrg() == true && needsCurrency == true){
+			String masterTblName = ctx.master.getDescribe().getName();
+			soqlProjection += ', ' + RollupOperation.Max + '(' + masterTblName + 
+					'.' + CURRENCYISOCODENAME + ') ' + MASTERCURRENCYALIAS;
+		}
+
     	// #1 token for SOQL_TEMPLATE
     	String detailTblName = ctx.detail.getDescribe().getName();
     	
@@ -122,7 +159,12 @@ public class LREngine {
 			for (String detailFld : detail2MasterFldMap.keySet()) {
 				Object aggregatedDetailVal = res.get(detail2AliasMap.get(detailFld));
 				System.debug(LoggingLevel.INFO, 'New aggregarte value ' + aggregatedDetailVal + ' for master ' + masterRecId);
-				masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
+				// Should also test for necessity
+				if(IsMultiCurrencyOrg() == true && isFieldCurrencyMap.get(detailFld) == true){
+					masterObj.put(detail2MasterFldMap.get(detailFld), convertCurrency((String)res.get(MASTERCURRENCYALIAS),(Decimal)aggregatedDetailVal));
+				} else {
+					masterObj.put(detail2MasterFldMap.get(detailFld), aggregatedDetailVal);
+				}
 			} 			
 			// Remove master Id record as its been processed   	
 			masterIds.remove(masterRecId);	
@@ -170,6 +212,7 @@ public class LREngine {
         public boolean isDetailTypeNumber;
         public boolean isMasterTypeDateOrTime;
         public boolean isDetailTypeDateOrTime; 
+		public boolean isMasterTypeCurrency;
         
         public RollupSummaryField(Schema.Describefieldresult m, 
                                          Schema.Describefieldresult d, RollupOperation op) {
@@ -183,6 +226,7 @@ public class LREngine {
             this.isDetailTypeNumber = isNumber(detail.getType());
             this.isMasterTypeDateOrTime = isDateOrTime(master.getType());
             this.isDetailTypeDateOrTime = isDateOrTime(detail.getType()); 
+			this.isMasterTypeCurrency = isCurrency(master.getType());
             // validate if field is good to work on later 
             validate();
         }   
@@ -212,6 +256,10 @@ public class LREngine {
             return dt == Schema.Displaytype.Time 
                    || dt == Schema.Displaytype.Date
                    || dt == Schema.Displaytype.Datetime;
+        }
+
+        boolean isCurrency(Schema.DisplayType dt) {
+            return dt == Schema.Displaytype.Currency;
         }
     }
     
