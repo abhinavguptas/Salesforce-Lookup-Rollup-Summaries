@@ -31,7 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 public class LREngine {
 	
 	/*
-		Tempalte tokens
+		Template tokens
 			0 : Fields to project
 			1 : Object to query
 			2 : Optional WHERE clause filter to add
