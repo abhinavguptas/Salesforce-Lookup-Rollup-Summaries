@@ -5,7 +5,7 @@ Rollup summary fields are pretty common requirement in force.com customizations 
  * Rollup child sobject records part of a lookup relationship. Native rollup summary fields are not available on LOOKUP relationships.
 
 The 'USUAL' approach to handle this limitation is to either
- * Write trigger on various DML(reate, Update, Delete/Undelete) events on child sobject. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same.   
+ * Write trigger on various DML(Create, Update, Delete/Undelete) events on child sobject. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same.   
  * Write some batch/scheduled apex to perform this nightly.
 
 ## Problem in USUAL approach ?
