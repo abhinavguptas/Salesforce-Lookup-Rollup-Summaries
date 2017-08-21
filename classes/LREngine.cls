@@ -300,16 +300,13 @@ public class LREngine {
                             if(childCurrencyIsoCode != masterCurrencyIsoCode) {
                                 Date currencyDate = (ctx.dateLookupField != null) ? (Date) childDetailRecord.getSObject(ctx.dateLookupField.getRelationshipName()).get(ctx.dateField.getName()) : (Date) childDetailRecord.get(ctx.dateField.getName());
                                 Decimal amountInCorporateCurrency = CurrencyManagement.convertToCorporateCurrency(childCurrencyIsoCode, (Decimal) childDetailRecord.get(rsf.detail.getName()), currencyDate);
-                                System.debug(amountInCorporateCurrency);
                                 amountInAccountCurrency = CurrencyManagement.convertFromCorporateCurrency(masterCurrencyIsoCode, amountInCorporateCurrency, currencyDate);
-                                System.debug(amountInAccountCurrency);
                             }
                             else {
                                 amountInAccountCurrency = (Decimal) childDetailRecord.get(rsf.detail.getName());
                             }
                             sum += amountInAccountCurrency;
                         }
-                        System.debug(sum);
                         masterRecordsMap.get(masterId).put(rsf.master.getName(), sum);
                     }
                     // Remove master Id record as its been processed
