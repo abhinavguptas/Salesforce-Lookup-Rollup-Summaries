@@ -1,7 +1,7 @@
 # What problem are we trying to solve ?
 
 Rollup summary fields are pretty common requirement in force.com customizations and app development. Rollups are easy to create on master-detail relationships as they are available as a field type. But on certain limits/situations we need to write apex code for rolling up the child information for common aggregations like COUNT, SUM, AVG, MAX/MIN etc, some of these limitations are
- * [Only 10 rollup summary fields allowed per object on master detail relationships](http://ap1.salesforce.com/help/doc/en/limits.htm#CustomFieldLimitDetails)
+ * [Only 40 rollup summary fields allowed per object on master detail relationships](https://help.salesforce.com/articleView?id=000213287&type=1)
  * Rollup child sobject records part of a lookup relationship. Native rollup summary fields are not available on LOOKUP relationships.
 
 The 'USUAL' approach to handle this limitation is to either
