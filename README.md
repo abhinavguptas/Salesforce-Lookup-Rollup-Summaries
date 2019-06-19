@@ -5,7 +5,7 @@ Rollup summary fields are pretty common requirement in force.com customizations 
  * Rollup child sobject records part of a lookup relationship. Native rollup summary fields are not available on LOOKUP relationships.
 
 The 'USUAL' approach to handle this limitation is to either
- * Write trigger on various DML(Create, Update, Delete/Undelete) events on child sobject. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same.   
+ * Write trigger on various DML(Create, Update, Delete/Undelete) events on child sobject. These trigger either manually aggregated the information via Apex or used SOQL Aggregate queries for the same.  
  * Write some batch/scheduled apex to perform this nightly.
 
 ## Problem in USUAL approach ?
@@ -21,22 +21,22 @@ Most of the times the rollup code/logic is pretty similar. Bigger problem happen
   - Script statements consumed
 
 ## How this lib ('LREngine') solves the problem ?
-This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup Engine, which 
- * Performs rollup on multiple such fields in a single aggregate soql query. 
+This library contains one single class called "LREngine" i.e. "L"ookup "R"ollup Engine, which
+ * Performs rollup on multiple such fields in a single aggregate soql query.
  * Allows easy addition/removal of new fields to rollup as requirement changes over the span of time.
  * Developer needs to write only a single trigger for multiple rollup fields.
  * Allows developer to filter the child records getting rolled up, just like standard rollup summary fields
 
 ### Using LREngine in Triggers
-Using LREngine in trigger is fairly simple as indicated in the code snippet, developer just needs to take care of checks related to business requirements and call the LREngine. 
+Using LREngine in trigger is fairly simple as indicated in the code snippet, developer just needs to take care of checks related to business requirements and call the LREngine.
 
 Please note : Make sure you have trapped all create/delete/undelete/update events on child object to make sure all calculations are correct.
 
 ```java
-trigger OppRollup on Opportunity (after insert, after update, 
-                                        after delete, after undelete) {
+trigger OppRollup on Opportunity (after insert, after update,
+					after delete, after undelete) {
       // modified objects whose parent records should be updated
-     Opportunity[] objects = null;   
+     Opportunity[] objects = null;  
 
      if (Trigger.isDelete) {
          objects = Trigger.old;
@@ -56,10 +56,10 @@ trigger OppRollup on Opportunity (after insert, after update,
      LREngine.Context ctx = new LREngine.Context(Account.SobjectType, // parent object
                                             Opportunity.SobjectType,  // child object
                                             Schema.SObjectType.Opportunity.fields.AccountId // relationship field name
-                                            );     
+                                            );    
      /*
-      Next, one can add multiple rollup fields on the above relationship. 
-      Here specify 
+      Next, one can add multiple rollup fields on the above relationship.
+      Here specify
        1. The field to aggregate in child object
        2. The field to which aggregated value will be saved in master/parent object
        3. The aggregate operation to be done i.e. SUM, AVG, COUNT, MIN/MAX
@@ -68,49 +68,81 @@ trigger OppRollup on Opportunity (after insert, after update,
             new LREngine.RollupSummaryField(
                                             Schema.SObjectType.Account.fields.AnnualRevenue,
                                             Schema.SObjectType.Opportunity.fields.Amount,
-                                            LREngine.RollupOperation.Sum 
-                                         )); 
+                                            LREngine.RollupOperation.Sum
+                                         ));
      ctx.add(
             new LREngine.RollupSummaryField(
                                             Schema.SObjectType.Account.fields.SLAExpirationDate__c,
                                                Schema.SObjectType.Opportunity.fields.CloseDate,
                                                LREngine.RollupOperation.Max
-                                         ));                                       
-	 
-     /* 
-      Calling rollup method returns in memory master objects with aggregated values in them. 
-      Please note these master records are not persisted back, so that client gets a chance 
+                                         ));                                      
+  
+      /*
+        To Prepare MasterId's incase if the realtionship is changed on child object Old Master record and nNew Master Records
+        needs recalculation of Rollup Summaries.
+      */
+
+      set<id> MasterIds=new set<id>();
+
+        for( Opportunity newOpportunity:objects){
+            if(trigger.isupdate){
+                Opportunity oldOpportunity=(Opportunity)trigger.oldMap.get(newOpportunity.Id);
+                if(oldOpportunity!=null&& newOpportunity.AccountId!=oldContact.AccountId){
+                      MasterIds.add(oldOpportunity.AccountId);
+                      MasterIds.add(newOpportunity.AccountId);
+                      }
+            }else{
+                MasterIds.add(newOpportunity.AccountID);
+            }
+        }
+
+      /*
+      Calling rollup method returns in memory master objects with aggregated values in them.
+      Please note these master records are not persisted back, so that client gets a chance
       to post process them after rollup
       */ 
-     Sobject[] masters = LREngine.rollUp(ctx, objects);    
+  Sobject[] masters = LREngine.rollUp(ctx, MasterIds);
 
+    /*
+      To check if the Masterid's were returned to perform update operation.
+      To avoid error when child records are created with out master like Tasks, Events with out selecting Account.
+    */
+    Sobject[] mastersWithIds=new list<Sobject>();
+    // Persiste the changes in master
+    for(SObject master:masters){
+        if(master.id!=null){
+            mastersWithIds.add(master);
+        }
+    }
+ 
      // Persiste the changes in master
      update masters;
 }
 ```
 
-### Using LREngine in Batch/Scheduled/etc Apex 
+### Using LREngine in Batch/Scheduled/etc Apex
 If we are not using triggers for some reason to aggregate the detail records. In that case Batch or Scheduled Apex is used on some occasions. Calling LREngine is fairly easy, once you have master record ids in hand just call the API as indicated in the code snippet below:
 
 ```java
 LREngine.Context ctx = // create context with required roll up summary fields as shown in above code snippet
 Set<Id> masterRecordIds = // master record ids as per the business logic
-Sobject[] masters = LREngine.rollUp(ctx, masterRecordIds);   
+Sobject[] masters = LREngine.rollUp(ctx, masterRecordIds);  
 ```
 
 ### Adding some conditional filtering to the rollup operation
-Doing this is pretty easy, just add the condition in the Context constructor as shown below 
+Doing this is pretty easy, just add the condition in the Context constructor as shown below
 ```java
-LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
-	                        Opportunity.SobjectType, 
-	                        Schema.SObjectType.Opportunity.fields.AccountId,
-	                        'Amount > 200' // filter out any opps with amount less than 200
-	                        );
+LREngine.Context ctx = new LREngine.Context(Account.SobjectType,
+                          Opportunity.SobjectType,
+                          Schema.SObjectType.Opportunity.fields.AccountId,
+                          'Amount > 200' // filter out any opps with amount less than 200
+                          );
 
 ```
 # Installing LREngine
-This is fairly simple, just copy the LREngine.cls (Core logic) and TestLREngine.cls(Test case + code coverage) to help. 
+This is fairly simple, just copy the LREngine.cls (Core logic) and TestLREngine.cls(Test case + code coverage) to help.
 
 # Important points
- * Using LREngine is not recommended when number of child records associated with master records are too much. Because salesforce limit on "Total number of records retrieved by SOQL queries" is 50,000 as of now. 
+ * Using LREngine is not recommended when number of child records associated with master records are too much. Because salesforce limit on "Total number of records retrieved by SOQL queries" is 50,000 as of now.
  * LREngine doesn't persists changes back to master records after rollup. This gives client code to perform any further calculations, but please make sure you call UPDATE on master records to persist the changes.
+
