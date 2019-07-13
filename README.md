@@ -60,8 +60,8 @@ trigger OppRollup on Opportunity (after insert, after update,
      /*
       Next, one can add multiple rollup fields on the above relationship. 
       Here specify 
-       1. The field to aggregate in child object
-       2. The field to which aggregated value will be saved in master/parent object
+       1. The field to which aggregated value will be saved in master/parent object
+       2. The field to aggregate in child object
        3. The aggregate operation to be done i.e. SUM, AVG, COUNT, MIN/MAX
      */
      ctx.add(
