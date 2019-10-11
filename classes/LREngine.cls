@@ -29,7 +29,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     LREngine("L"ookup "R"ollup Engine) : This class simplifies rolling up on the child records in lookup relationship.
 */
 public class LREngine {
-    
+
     /*
         Tempalte tokens
             0 : Fields to project
@@ -47,7 +47,7 @@ public class LREngine {
             3 : Order by clause
     */
     static String SOQL_QUERY_TEMPLATE = 'SELECT {0} FROM {1} WHERE {2} in :masterIds {3} ORDER BY {4}';
-    
+
     /*
     Support for multi-currency orgs
     */
@@ -74,18 +74,18 @@ public class LREngine {
 
     /**
         Key driver method that rolls up lookup fields based on the context. This is specially useful in Trigger context.
-        
+
         @param ctx Context the complete context required to rollup
-        @param detailRecordsFromTrigger child/detail records which are modified/created/deleted during the Trigger 
+        @param detailRecordsFromTrigger child/detail records which are modified/created/deleted during the Trigger
         @returns Array of in memory master objects. These objects are not updated back to the database
                 because we want client or calling code to have this freedom to do some post processing and update when required.
     */
     public static Sobject[] rollUp(Context ctx, Sobject[] detailRecordsFromTrigger) {
-        
+
         // API name of the lookup field on detail sobject
         String lookUpFieldName = ctx.lookupField.getName();
-                
-        Set<Id> masterRecordIds = new Set<Id>(); 
+
+        Set<Id> masterRecordIds = new Set<Id>();
         for (Sobject kid : detailRecordsFromTrigger) {
             masterRecordIds.add((Id)kid.get(lookUpFieldName));
         }
@@ -95,22 +95,22 @@ public class LREngine {
     /**
         Key driver method that rolls up lookup fields based on the context. This is meant to be called from non trigger contexts like
         scheduled/batch apex, where we want to rollup on some master record ids.
-        
+
         @param Context the complete context required to rollup
-        @param masterIds Master record IDs whose child records should be rolled up. 
+        @param masterIds Master record IDs whose child records should be rolled up.
         @returns Array of in memory master objects. These objects are not updated back to the database
                 because we want client or calling code to have this freedom to do some post processing and update when required.
     */
     public static Sobject[] rollUp(Context ctx,  Set<Id> masterIds) {
         return rollUp(ctx, masterIds, false);
     }
-    
+
     /**
         Key driver method that rolls up lookup fields based on the context. This is meant to be called from non trigger contexts like
         scheduled/batch apex, where we want to rollup on some master record ids.
-        
+
         @param Context the complete context required to rollup
-        @param masterIds Master record IDs whose child records should be rolled up. 
+        @param masterIds Master record IDs whose child records should be rolled up.
         @param validateOnly Checks the SOQL query is valid, throws an exception if not, returns null if valid
         @returns Array of in memory master objects. These objects are not updated back to the database
                 because we want client or calling code to have this freedom to do some post processing and update when required.
@@ -120,11 +120,11 @@ public class LREngine {
         masterIds = masterIds.clone();
         // K: Id of master record
         // V: Empty sobject with ID field, this will be used for updating the masters
-        Map<Id, Sobject> masterRecordsMap = new Map<Id, Sobject>(); 
+        Map<Id, Sobject> masterRecordsMap = new Map<Id, Sobject>();
         for (Id mId : masterIds) {
             masterRecordsMap.put(mId, ctx.master.newSobject(mId));
         }
-        
+
         // #0 token : SOQL projection
         String soqlProjection = ctx.lookupField.getName();
         List<String> orderByFields = new List<String>();
@@ -132,16 +132,16 @@ public class LREngine {
 
         // k: detail field name, v: master field name
         Integer exprIdx = 0;
-        Boolean needsCurrency = false;
+        Boolean needsCurrency, needsAdvancedCurrency = false;
         Boolean builtAggregateQuery = false;
         Map<String, RollupSummaryField> rsfByAlais = new Map<String, RollupSummaryField>();
         for (RollupSummaryField rsf : ctx.fieldsToRoll) {
             if(rsf.operation == RollupOperation.Sum ||
-               rsf.operation == RollupOperation.Max ||
-               rsf.operation == RollupOperation.Min ||
-               rsf.operation == RollupOperation.Avg ||
-               rsf.operation == RollupOperation.Count ||
-               rsf.operation == RollupOperation.Count_Distinct) {
+                            rsf.operation == RollupOperation.Max ||
+                            rsf.operation == RollupOperation.Min ||
+                            rsf.operation == RollupOperation.Avg ||
+                            rsf.operation == RollupOperation.Count ||
+                            rsf.operation == RollupOperation.Count_Distinct) {
                 // create aggreate projection with alias for easy fetching via AggregateResult class
                 // i.e. SUM(Amount) Amount
                 builtAggregateQuery = true;
@@ -150,53 +150,65 @@ public class LREngine {
                 rsfByAlais.put(alias, rsf);
                 if(IsMultiCurrencyOrg() == true && needsCurrency == false && rsf.isMasterTypeCurrency){
                     needsCurrency = true;
-                }                
+                }
             } else {
-                // create field projection 
+                // create field projection
                 // i.e. Amount
                 soqlProjection += ', ' + rsf.detail.getName();
                 // create order by projections
                 // i.e. Amount ASC NULLS FIRST
-                String orderByField = 
-                    rsf.detailOrderBy!=null ? rsf.detailOrderBy.getName() : rsf.detail.getName();
+                String orderByField =
+                        rsf.detailOrderBy!=null ? rsf.detailOrderBy.getName() : rsf.detail.getName();
                 orderByFields.add(orderByField);
+                if(IsMultiCurrencyOrg() == true && rsf.operation == RollupOperation.SumAdvancedCurrency && needsAdvancedCurrency == false && rsf.isMasterTypeCurrency){
+                    needsAdvancedCurrency = true;
+                }
             }
         }
-        
+
         // Add a field selection to get the currency from the parent record if we are depositing values into a currency field
         if(IsMultiCurrencyOrg() == true && needsCurrency == true){
             String lookupRelationshipName = ctx.lookupField.getRelationshipName();
-            soqlProjection += ', ' + RollupOperation.Max + '(' + lookupRelationshipName + 
+            soqlProjection += ', ' + RollupOperation.Max + '(' + lookupRelationshipName +
                     '.' + CURRENCYISOCODENAME + ') ' + MASTERCURRENCYALIAS;
+        }
+        else if(IsMultiCurrencyOrg() == true && needsAdvancedCurrency == true){
+            soqlProjection += ', ' + ctx.lookupField.getRelationshipName() + '.' + CURRENCYISOCODENAME + ', '  + CURRENCYISOCODENAME;
+            if(ctx.dateField != null && ctx.dateLookupField != null) {
+                soqlProjection += ', ' +  ctx.dateLookupField.getRelationshipName() + '.' + ctx.dateField.getName();
+            }
+            else {
+                soqlProjection += ', ' + ctx.dateField.getName();
+            }
         }
 
         // #1 token for SOQL_TEMPLATE
         String detailTblName = ctx.detail.getDescribe().getName();
-        
+
         // #2 Where clause
         String whereClause = '';
         if (ctx.detailWhereClause != null && ctx.detailWhereClause.trim().length() > 0) {
             whereClause = 'AND ' + ctx.detailWhereClause ;
         }
-        
+
         // #3 Group by field
         String grpByFld = ctx.lookupField.getName();
 
         // build approprite soql for this rollup context
         String soql =
-            builtAggregateQuery ? 
-                String.format(SOQL_AGGREGATE_TEMPLATE, 
-                    new String[]{ 
-                        soqlProjection, 
-                        detailTblName, 
-                        whereClause, 
-                        grpByFld}) : 
-                String.format(SOQL_QUERY_TEMPLATE, 
-                    new String[]{
-                        soqlProjection, 
-                        detailTblName, 
-                        ctx.lookupField.getName(), 
-                        whereClause, 
+        builtAggregateQuery ?
+        String.format(SOQL_AGGREGATE_TEMPLATE,
+                new String[]{
+                        soqlProjection,
+                        detailTblName,
+                        whereClause,
+                        grpByFld}) :
+        String.format(SOQL_QUERY_TEMPLATE,
+                new String[]{
+                        soqlProjection,
+                        detailTblName,
+                        ctx.lookupField.getName(),
+                        whereClause,
                         String.join(orderByFields, ',')});
         System.debug('SOQL is ' + soql);
 
@@ -206,7 +218,7 @@ public class LREngine {
             return null;
         }
 
-        // query results 
+        // query results
         Object queryResults = Database.query(soql);
         if(queryResults instanceof List<AggregateResult>) {
 
@@ -219,7 +231,7 @@ public class LREngine {
                     System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
                     continue;
                 }
-                
+
                 for (String alias : rsfByAlais.keySet()) {
                     RollupSummaryField rsf = rsfByAlais.get(alias);
                     Object aggregatedDetailVal = res.get(alias);
@@ -230,12 +242,11 @@ public class LREngine {
                     } else {
                         masterObj.put(rsf.master.getName(), aggregatedDetailVal);
                     }
-                }           
-                // Remove master Id record as its been processed    
-                masterIds.remove(masterRecId);  
-            }            
+                }
+                // Remove master Id record as its been processed
+                masterIds.remove(masterRecId);
+            }
         } else if(queryResults instanceof List<SObject>) {
-
             // Group detail records by master Id
             List<SObject> detailRecords = (List<SObject>) queryResults;
             Map<Id, List<SObject>> detailRecordsByMasterId = new Map<Id, List<SObject>>();
@@ -256,17 +267,17 @@ public class LREngine {
                 for (RollupSummaryField rsf : ctx.fieldsToRoll) {
                     List<SObject> childDetailRecords = detailRecordsByMasterId.get(masterId);
                     if(rsf.operation == RollupOperation.Concatenate ||
-                       rsf.operation == RollupOperation.Concatenate_Distinct) {                    
+                                    rsf.operation == RollupOperation.Concatenate_Distinct) {
                         Concatenator concatenator =
-                            new Concatenator(rsf.operation == RollupOperation.Concatenate_Distinct, rsf.concatenateDelimiter);
+                                new Concatenator(rsf.operation == RollupOperation.Concatenate_Distinct, rsf.concatenateDelimiter);
                         for(SObject childDetailRecord : childDetailRecords) {
                             String childFieldValue = String.valueOf(childDetailRecord.get(rsf.detail.getName()));
                             if (childFieldValue != null) {
-                            if (rsf.detail.getType() == Schema.DisplayType.MultiPicklist) {
+                                if (rsf.detail.getType() == Schema.DisplayType.MultiPicklist) {
                                     for (String mspValue : childFieldValue.split(';')) {
-                                    concatenator.add(mspValue);
-                                }
-                            } else {
+                                        concatenator.add(mspValue);
+                                    }
+                                } else {
                                     concatenator.add(childFieldValue);
                                 }
                             }
@@ -276,24 +287,41 @@ public class LREngine {
                         masterRecordsMap.get(masterId).put(rsf.master.getName(), concatenatedValues);
                     } else if(rsf.operation == RollupOperation.First) {
                         masterRecordsMap.get(masterId).put(
-                            rsf.master.getName(), childDetailRecords[0].get(rsf.detail.getName()));
+                                rsf.master.getName(), childDetailRecords[0].get(rsf.detail.getName()));
                     } else if(rsf.operation == RollupOperation.Last) {
                         masterRecordsMap.get(masterId).put(
-                            rsf.master.getName(), childDetailRecords[childDetailRecords.size()-1].get(rsf.detail.getName()));                        
+                                rsf.master.getName(), childDetailRecords[childDetailRecords.size()-1].get(rsf.detail.getName()));
+                    } else if(rsf.operation == RollupOperation.SumAdvancedCurrency) {
+                        Decimal sum = 0;
+                        for(SObject childDetailRecord : childDetailRecords) {
+                            Decimal amountInAccountCurrency = 0;
+                            String masterCurrencyIsoCode = (String) childDetailRecord.getSObject(ctx.lookupField.getRelationshipName()).get(CURRENCYISOCODENAME);
+                            String childCurrencyIsoCode = (String) childDetailRecord.get(CURRENCYISOCODENAME);
+                            if(childCurrencyIsoCode != masterCurrencyIsoCode) {
+                                Date currencyDate = (ctx.dateLookupField != null) ? (Date) childDetailRecord.getSObject(ctx.dateLookupField.getRelationshipName()).get(ctx.dateField.getName()) : (Date) childDetailRecord.get(ctx.dateField.getName());
+                                Decimal amountInCorporateCurrency = CurrencyManagement.convertToCorporateCurrency(childCurrencyIsoCode, (Decimal) childDetailRecord.get(rsf.detail.getName()), currencyDate);
+                                amountInAccountCurrency = CurrencyManagement.convertFromCorporateCurrency(masterCurrencyIsoCode, amountInCorporateCurrency, currencyDate);
+                            }
+                            else {
+                                amountInAccountCurrency = (Decimal) childDetailRecord.get(rsf.detail.getName());
+                            }
+                            sum += amountInAccountCurrency;
+                        }
+                        masterRecordsMap.get(masterId).put(rsf.master.getName(), sum);
                     }
-                    // Remove master Id record as its been processed    
-                    masterIds.remove(masterId);                          
-                }                
+                    // Remove master Id record as its been processed
+                    masterIds.remove(masterId);
+                }
             }
         }
-        
+
         // Zero rollups for unprocessed master records (those with no longer any child relationships)
         for(Id masterRecId : masterIds)
             for (RollupSummaryField rsf : ctx.fieldsToRoll)
-                masterRecordsMap.get(masterRecId).put(rsf.master.getName(), 
-                    rsf.isMasterTypeNumber ? 0 : null);
-        
-        return masterRecordsMap.values();   
+                masterRecordsMap.get(masterRecId).put(rsf.master.getName(),
+                        rsf.isMasterTypeNumber ? 0 : null);
+
+        return masterRecordsMap.values();
     }
 
     /**
@@ -326,25 +354,25 @@ public class LREngine {
             return String.join(listOfString, delimiter == null ? '' : delimiter);
         }
     }
-        
+
     /**
         Exception throwed if Rollup Summary field is in bad state
     */
     public class BadRollUpSummaryStateException extends Exception {}
-    
-   /**
-       Which rollup operation you want to perform 
-    */ 
+
+    /**
+        Which rollup operation you want to perform
+     */
     public enum RollupOperation {
-        Sum, Max, Min, Avg, Count, Count_Distinct, Concatenate, Concatenate_Distinct, First, Last
+        Sum, Max, Min, Avg, Count, Count_Distinct, Concatenate, Concatenate_Distinct, First, Last, SumAdvancedCurrency
     }
-    
+
     /**
         Represents a "Single" roll up field, it contains
         - Master field where the rolled up info will be saved
-        - Detail field that will be rolled up via any operation i.e. sum, avg etc 
+        - Detail field that will be rolled up via any operation i.e. sum, avg etc
         - Operation to perform i.e. sum, avg, count etc
-            
+
     */
     public class RollupSummaryField {
         public Schema.Describefieldresult master;
@@ -352,27 +380,27 @@ public class LREngine {
         public Schema.Describefieldresult detailOrderBy;
         public RollupOperation operation;
         public String concatenateDelimiter;
-        
+
         // derived fields, kept like this to save script lines later, by saving the same
         // computations over and over again
         public boolean isMasterTypeNumber;
         public boolean isDetailTypeNumber;
         public boolean isMasterTypeDateOrTime;
-        public boolean isDetailTypeDateOrTime; 
+        public boolean isDetailTypeDateOrTime;
         public boolean isMasterTypeCurrency;
         public boolean isMasterTypeText;
         public boolean isDetailTypeText;
 
-        public RollupSummaryField(Schema.Describefieldresult m, 
-                                         Schema.Describefieldresult d, RollupOperation op) {
+        public RollupSummaryField(Schema.Describefieldresult m,
+                                  Schema.Describefieldresult d, RollupOperation op) {
             this(m, d, null, op, null);
         }
 
-        public RollupSummaryField(Schema.Describefieldresult m, 
-                                         Schema.Describefieldresult d, 
-                                         Schema.Describefieldresult detailOrderBy,
-                                         RollupOperation op,
-                                         String concatenateDelimiter) {
+        public RollupSummaryField(Schema.Describefieldresult m,
+                                  Schema.Describefieldresult d,
+                                  Schema.Describefieldresult detailOrderBy,
+                                  RollupOperation op,
+                                  String concatenateDelimiter) {
             this.master = m;
             this.detail = d;
             this.detailOrderBy = detailOrderBy;
@@ -384,43 +412,43 @@ public class LREngine {
             this.isMasterTypeNumber = isNumber(master.getType());
             this.isDetailTypeNumber = isNumber(detail.getType());
             this.isMasterTypeDateOrTime = isDateOrTime(master.getType());
-            this.isDetailTypeDateOrTime = isDateOrTime(detail.getType()); 
+            this.isDetailTypeDateOrTime = isDateOrTime(detail.getType());
             this.isMasterTypeCurrency = isCurrency(master.getType());
             this.isMasterTypeText = isText(master.getType());
             this.isDetailTypeText = isText(detail.getType());
-            // validate if field is good to work on later 
+            // validate if field is good to work on later
             validate();
-        }   
-        
+        }
+
         void validate() {
-            if (master == null || detail == null || operation == null) 
+            if (master == null || detail == null || operation == null)
                 throw new BadRollUpSummaryStateException('All of Master/Detail Describefieldresult and RollupOperation info is mandantory');
 
             if (operation == RollupOperation.Concatenate ||
-                operation == RollupOperation.Concatenate_Distinct) {
+                            operation == RollupOperation.Concatenate_Distinct) {
                 if ( !isMasterTypeText ) {
                     throw new BadRollUpSummaryStateException('Only Text/Text Area fields are allowed for Concatenate and Concatenate Distinct');
                 }
             }
 
             if (operation == RollupOperation.First ||
-                operation == RollupOperation.Last) {
+                            operation == RollupOperation.Last) {
                 if ( (this.master.getType() != this.detail.getType()) &&
-                     (!isDetailTypeText && !isMasterTypeText) ) {
+                        (!isDetailTypeText && !isMasterTypeText) ) {
                     throw new BadRollUpSummaryStateException('Master and detail fields must be the same field type (or text based) for First or Last operations');
                 }
             }
 
             if (operation == RollupOperation.Sum ||
-                operation == RollupOperation.Max ||
-                operation == RollupOperation.Min ||
-                operation == RollupOperation.Avg) {
+                            operation == RollupOperation.Max ||
+                            operation == RollupOperation.Min ||
+                            operation == RollupOperation.Avg) {
                 if ( (!isMasterTypeDateOrTime && !isMasterTypeNumber) ||
-                     (!isDetailTypeDateOrTime && !isDetailTypeNumber)) {
+                        (!isDetailTypeDateOrTime && !isDetailTypeNumber)) {
                     throw new BadRollUpSummaryStateException('Only Date/DateTime/Time/Numeric fields are allowed for Sum, Max, Min and Avg');
                 }
             }
-            
+
             if (isMasterTypeDateOrTime && (RollupOperation.Sum == operation || RollupOperation.Avg == operation)) {
                 throw new BadRollUpSummaryStateException('Sum/Avg doesnt looks like valid for dates ! Still want, then implement the IRollerCoaster yourself and change this class as required.');
             }
@@ -428,22 +456,22 @@ public class LREngine {
 
         boolean isText (Schema.Displaytype dt) {
             return dt == Schema.Displaytype.TextArea ||
-                dt == Schema.Displaytype.String ||
-                dt == Schema.Displaytype.Picklist ||
-                dt == Schema.Displaytype.MultiPicklist;
+                            dt == Schema.Displaytype.String ||
+                            dt == Schema.Displaytype.Picklist ||
+                            dt == Schema.Displaytype.MultiPicklist;
         }
 
         boolean isNumber (Schema.Displaytype dt) {
-            return dt == Schema.Displaytype.Currency 
-                   || dt == Schema.Displaytype.Integer
-                   || dt == Schema.Displaytype.Percent
-                   || dt == Schema.Displaytype.Double;
+            return dt == Schema.Displaytype.Currency
+                    || dt == Schema.Displaytype.Integer
+                    || dt == Schema.Displaytype.Percent
+                    || dt == Schema.Displaytype.Double;
         }
-        
+
         boolean isDateOrTime(Schema.DisplayType dt) {
-            return dt == Schema.Displaytype.Time 
-                   || dt == Schema.Displaytype.Date
-                   || dt == Schema.Displaytype.Datetime;
+            return dt == Schema.Displaytype.Time
+                    || dt == Schema.Displaytype.Date
+                    || dt == Schema.Displaytype.Datetime;
         }
 
         boolean isCurrency(Schema.DisplayType dt) {
@@ -452,23 +480,23 @@ public class LREngine {
 
         public boolean isAggregateBasedRollup() {
             return operation == RollupOperation.Sum ||
-                operation == RollupOperation.Min ||
-                operation == RollupOperation.Max ||
-                operation == RollupOperation.Avg ||
-                operation == RollupOperation.Count ||
-                operation == RollupOperation.Count_Distinct;
+                            operation == RollupOperation.Min ||
+                            operation == RollupOperation.Max ||
+                            operation == RollupOperation.Avg ||
+                            operation == RollupOperation.Count ||
+                            operation == RollupOperation.Count_Distinct;
         }
 
         public boolean isQueryBasedRollup() {
             return operation == RollupOperation.Concatenate ||
-                operation == RollupOperation.Concatenate_Distinct ||
-                operation == RollupOperation.First ||
-                operation == RollupOperation.Last;
+                            operation == RollupOperation.Concatenate_Distinct ||
+                            operation == RollupOperation.First ||
+                            operation == RollupOperation.Last;
         }
     }
-    
+
     /**
-        Context having all the information about the rollup to be done. 
+        Context having all the information about the rollup to be done.
         Please note : This class encapsulates many rollup summary fields with different operations.
     */
     public class Context {
@@ -478,29 +506,50 @@ public class LREngine {
         public Schema.Sobjecttype detail;
         // Lookup field on Child/Detail Sobject
         public Schema.Describefieldresult lookupField;
+        // Date lookup field used for Dated Exchange Rate
+        public Schema.Describefieldresult dateLookupField;
+        // Date field used for Dated Exchange Rate
+        public Schema.Describefieldresult dateField;
         // various fields to rollup on
         public List<RollupSummaryField> fieldsToRoll;
         // what type of rollups does this context contain
         private Boolean isAggregateBased = null;
         private Boolean isQueryBased = null;
-        
+
         // Where clause or filters to apply while aggregating detail records
-        public String detailWhereClause;            
-        
-        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
-                           Schema.Describefieldresult lf) {
-            this(m, d, lf, '');                             
+        public String detailWhereClause;
+
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d,
+                       Schema.Describefieldresult lf) {
+            this(m, d, lf, '');
         }
-        
-        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
-                           Schema.Describefieldresult lf, String detailWhereClause) {
+
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d,
+                       Schema.Describefieldresult lf, Schema.Describefieldresult dlf, Schema.Describefieldresult df) {
+            this(m, d, lf, dlf, df, '');
+        }
+
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d,
+                       Schema.Describefieldresult lf, Schema.Describefieldresult df) {
+            this(m, d, lf, null, df, '');
+        }
+
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d,
+                       Schema.Describefieldresult lf, String detailWhereClause) {
+            this(m, d, lf, null, null, '');
+        }
+
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d,
+                       Schema.Describefieldresult lf, Schema.Describefieldresult dlf, Schema.Describefieldresult df, String detailWhereClause) {
             this.master = m;
             this.detail = d;
             this.lookupField = lf;
+            this.dateLookupField = dlf;
+            this.dateField = df;
             this.detailWhereClause = detailWhereClause;
             this.fieldsToRoll = new List<RollupSummaryField>();
         }
-        
+
         /**
             Adds new rollup summary fields to the context
         */
@@ -515,10 +564,10 @@ public class LREngine {
 
             // A context cannot support summary fields with operations that mix the use of underlying query types
             if(isAggregateBased && !fld.isAggregateBasedRollup() ||
-               isQueryBased && !fld.isQueryBasedRollup())
+                            isQueryBased && !fld.isQueryBasedRollup())
                 throw new BadRollUpSummaryStateException('Cannot mix Sum, Max, Min, Avg, Count, Count_Distinct operations with Concatenate, Concatenate_Distinct, First, Last operations');
 
             this.fieldsToRoll.add(fld);
         }
-    }    
+    }
 }
