@@ -784,5 +784,54 @@ private class TestLREngine {
         System.assertEquals(2, masters.size());
         System.assertEquals(expected1, reloadedAcc1.get(rollupField.master.getName()));
         System.assertEquals(expected2, reloadedAcc2.get(rollupField.master.getName()));
+    }
+	
+    
+    /*
+    This test case uses standard objects Account, Contact and Contracts. An account can have one or more contacts and one contact can have one or more
+	contracts. The use case here is to rollup an object to n levels higher upto a grandparent or even higher upto 5 levels as permitted by 
+	maximum number of related parent navigation in SOQL. Although contract also has a required relation with account but the idea is to show the use case
+	
+	via the contract -> contact- > account and still use standard object in this generic test class
+	
+    So if an account has 2 contacts and each contact has 2 contracts, then as an example , I can store 4 as the total number of contracts, 
+    rolling upto the account level ,at a number field on the Account level
+	navigating via the Contact relationship and skipping intermediate rollup field creations.
+    
+    This feature extends the rollup engine to support rollups on grandparents levels as well provided there is
+    a direct way to navigate via relationship fields (__r or otherwise)
+
+	The use case extendable to any other custom object hierarchy.
+   */
+    
+    
+     static testMethod void testRollUpOnGrandParent(){
+        Account acc = new Account(Name='Test Acc');
+        insert  acc;
+        
+        Contact con1= new Contact(AccountId=acc.Id,LastName='TestL1');
+        Contact con2= new Contact(AccountId=acc.Id,LastName='TestL2');
+        insert new List<Contact>{con1,con2};
+        
+        Contract c1 = new Contract(AccountId=acc.Id,CustomerSignedId = con1.Id,StartDate=Date.today(),Status='Draft',ContractTerm=4);    
+        Contract c2 = new Contract(AccountId=acc.Id,CustomerSignedId = con1.Id,StartDate=Date.today(),Status='Draft',ContractTerm=5); 
+        Contract c3 = new Contract(AccountId=acc.Id,CustomerSignedId = con2.Id,StartDate=Date.today(),Status='Draft',ContractTerm=5);  
+        Contract c4 = new Contract(AccountId=acc.Id,CustomerSignedId = con2.Id,StartDate=Date.today(),Status='Draft',ContractTerm=5);
+        
+        insert new List<Contract>{c1,c2,c3,c4};
+            
+        
+        LREngine.Context ctx = new LREngine.Context(Account.SobjectType, 
+                            Contract.SobjectType, 
+                            'CustomerSigned.AccountId'
+                            );
+		ctx.add(
+            new LREngine.RollupSummaryField(
+                                            Schema.SObjectType.Account.fields.NumberOfEmployees,   // just using a standard number field on account to test the feature.
+                                            Schema.SObjectType.Contract.fields.Id,
+                                            LREngine.RollupOperation.Count 
+                                         ));  
+		acc=(Account)LREngine.rollUp(ctx, new Set<Id>{acc.Id})[0];
+        System.assertEquals(4, acc.NumberOfEmployees);     
     }    
 }

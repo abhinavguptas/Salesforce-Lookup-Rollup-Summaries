@@ -31,7 +31,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 public class LREngine {
     
     /*
-        Tempalte tokens
+        Template tokens
             0 : Fields to project
             1 : Object to query
             2 : Optional WHERE clause filter to add
@@ -126,9 +126,9 @@ public class LREngine {
         }
         
         // #0 token : SOQL projection
-        String soqlProjection = ctx.lookupField.getName();
+        String soqlProjection = ctx.lookupField!=NULL ? ctx.lookupField.getName() : ctx.relatedRelName;
         List<String> orderByFields = new List<String>();
-        orderByFields.add(ctx.lookupField.getName()); // ensure details records are ordered by parent record
+        orderByFields.add(soqlProjection); // ensure details records are ordered by parent record
 
         // k: detail field name, v: master field name
         Integer exprIdx = 0;
@@ -180,7 +180,7 @@ public class LREngine {
         }
         
         // #3 Group by field
-        String grpByFld = ctx.lookupField.getName();
+        String grpByFld = ctx.lookupField!=NULL ? ctx.lookupField.getName() : ctx.relatedRelName;
 
         // build approprite soql for this rollup context
         String soql =
@@ -213,7 +213,13 @@ public class LREngine {
             // Process Aggregate query results from RollupOperations related to Aggergate operations
             List<AggregateResult> results = (List<AggregateResult>) queryResults;
             for (AggregateResult res : results){
-                Id masterRecId = (Id)res.get(grpByFld);
+                Id masterRecId;
+                if(!grpByFld.contains('.'))
+                	masterRecId = (Id)res.get(grpByFld);
+                else{
+                    List<string> splitFields = grpByFld.split('\\.');
+                    masterRecId = (Id)res.get(splitFields[splitFields.size()-1]);
+                }
                 Sobject masterObj = masterRecordsMap.get(masterRecId);
                 if (masterObj == null) {
                     System.debug(Logginglevel.WARN, 'No master record found for ID :' + masterRecId);
@@ -223,7 +229,6 @@ public class LREngine {
                 for (String alias : rsfByAlais.keySet()) {
                     RollupSummaryField rsf = rsfByAlais.get(alias);
                     Object aggregatedDetailVal = res.get(alias);
-                    System.debug(LoggingLevel.INFO, 'New aggregarte value ' + aggregatedDetailVal + ' for master ' + masterRecId);
                     // Should also test for necessity
                     if(IsMultiCurrencyOrg() == true && rsf.isMasterTypeCurrency){
                         masterObj.put(rsf.master.getName(), convertCurrency((String)res.get(MASTERCURRENCYALIAS),(Decimal)aggregatedDetailVal));
@@ -478,6 +483,7 @@ public class LREngine {
         public Schema.Sobjecttype detail;
         // Lookup field on Child/Detail Sobject
         public Schema.Describefieldresult lookupField;
+        public String relatedRelName;
         // various fields to rollup on
         public List<RollupSummaryField> fieldsToRoll;
         // what type of rollups does this context contain
@@ -497,6 +503,21 @@ public class LREngine {
             this.master = m;
             this.detail = d;
             this.lookupField = lf;
+            this.detailWhereClause = detailWhereClause;
+            this.fieldsToRoll = new List<RollupSummaryField>();
+        }
+        
+        
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
+                           String relatedRelationShipName) {
+            this(m, d, relatedRelationShipName, '');                             
+        }
+        
+        public Context(Schema.Sobjecttype m, Schema.Sobjecttype d, 
+                           String relatedRelationShipName, String detailWhereClause) {
+            this.master = m;
+            this.detail = d;
+            this.relatedRelName = relatedRelationShipName;
             this.detailWhereClause = detailWhereClause;
             this.fieldsToRoll = new List<RollupSummaryField>();
         }
