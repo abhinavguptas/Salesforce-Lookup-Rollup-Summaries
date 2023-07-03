@@ -7,11 +7,14 @@ jobs:
       - checkout
       - run:
           name: Install Dependencies
-          command: . build/install.sh 
+          command: . build/install.sh
+      - run:
+          name: Login to Environment
+          command: . build/setup-org.sh     
 
 workflows: 
   version: 2 
-  validate:
+  production-deployment:
     jobs:
       - deploy-prod:
           filters:
