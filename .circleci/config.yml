@@ -1,0 +1,29 @@
+version: 2.1
+executors:
+  sfdx:
+    docker:
+      - image: circleci/node:latest
+
+jobs:
+  deploy:
+    executor: sfdx
+    steps:
+      - checkout
+      - run:
+          name: SFDX
+          command: |
+            sudo npm install sfdx-cli --global
+      - run:
+          name: Authenticate
+          command: |
+            sfdx force:auth:sfdxurl:store -f ./login.txt -s
+      - run:
+          name: Deploy to Sandbox
+          command: |
+            sfdx force:source:deploy -u $SFDC_USERNAME -p ./force-app/main/default
+ 
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - deploy
