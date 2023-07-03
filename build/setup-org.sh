@@ -1,9 +1,7 @@
-echo "Setting up DevHub Connection..."
+echo "Setting up Org Connection..."
 mkdir keys
 echo $SFDC_SERVER_KEY | > keys/server.key
 
 echo "Authenticating..."
-RES=$(sfdx force:auth:jwt:grant --clientid $SFDC_CLIENT_ID --jwtkeyfile keys/server.key --username $SFDC_USERNAME --setdefaultdevhubusername -a DevHub --json)
-SFDC_AUTHENTICATE_ID=$(echo ${RES}) 
-echo "OrgId..."
-echo ${SFDC_AUTHENTICATE_ID}
+sfdx force:auth:jwt:grant --clientid $SFDC_CLIENT_ID --jwtkeyfile keys/server.key --username $SFDC_USERNAME --setdefaultdevhubusername -a DevHub
+sfdx force:org:list
