@@ -10,7 +10,13 @@ jobs:
           command: . build/install.sh
       - run:
           name: Login to Environment
-          command: . build/setup-org.sh     
+          command: . build/setup-prod.sh
+      - run:
+          name: Deploy to Production
+          command: . build/deploy-prod.sh
+      - run:
+          name: Run Local Test
+          command: . run-tests.sh              
 
 workflows: 
   version: 2 
