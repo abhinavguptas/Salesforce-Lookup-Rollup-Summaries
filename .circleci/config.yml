@@ -1,0 +1,29 @@
+version: 2
+jobs:
+  deploy-prod:
+    docker:
+      - image: circleci/node:latest 
+    steps:
+      - checkout
+      - run:
+          name: Install Dependencies
+          command: . build/install.sh
+      - run:
+          name: Login to Environment
+          command: . build/setup-prod.sh
+      - run:
+          name: Deploy to Production
+          command: . build/deploy-prod.sh
+      - run:
+          name: Run Local Test
+          command: . build/run-tests.sh              
+
+workflows: 
+  version: 2 
+  production-deployment:
+    jobs:
+      - deploy-prod:
+          filters:
+            branches:
+              only:
+                - master 
